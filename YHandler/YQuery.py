@@ -1,21 +1,27 @@
-from YHandler import YHandler
+from __future__ import absolute_import
+
 from collections import OrderedDict
 import requests
 import re
 import pkgutil
 import json
-from Selectors.DefaultSelector import DefaultSelector
 from urllib import quote_plus
 
+from YHandler.Selectors.DefaultSelector import DefaultSelector
+import YHandler
 
-class YQuery:
+
+
+class YahooSport:
     """
-    A class with a few convenience methods for querying the Yahoo Fantasy API.
-    All queries occur for the current user underneath a game context, which for 
-    Yahoo's API means that it occurs for a particular sport and fantasy game (i.e. nfl - season long),
-    and not a specific player or team game.
+    Represents a particular sport and fantasy game game key (e.g. NFL - season
+    long).
+
+    All queries occur for the current user underneath a game context, and not a
+    specific player or team game.
+
     """
-    def __init__(self, yhandler, game_key, selector=None):
+    def __init__(self, yhandler, game_key):
         """
         Constructor creates a YQuery object with a particular fantasy game context, and maps that
         games stats into the stat_categories dictionary
@@ -24,34 +30,38 @@ class YQuery:
         :param: [optional, BaseSelector] selector - selector to use for the querying the xml
         """
         self.yhandler = yhandler
-        self.query_format = 'xml'
-        self.stat_categories = {}
         self.game_key = game_key
-        self.selector = selector if selector else DefaultSelector()
-        self.ns = {'yh': 'http://fantasysports.yahooapis.com/fantasy/v2/base.rng'}
-        self.map_stat_categories()
 
-    def map_stat_categories(self):
+        self.stat_categories = {}
+        self._map_stat_categories()
+
+    def _map_stat_categories(self):
         """
         Maps a games stat categories to a Python dictionary. If successful,
         the mapping will be held under the stat_categories data attribute.
         :returns: bool - true if the mapping is succesful, false otherwise
         """
-        save_format = self.yhandler.format
-        self.yhandler.format = self.query_format
         resp = self.yhandler.api_req(str.format('game/{0}/stat_categories', self.game_key))
-        selector = self.yhandler.format = save_format
-        if resp.status_code != requests.codes['ok']:
-            return False
-        self.selector.parse(resp.content)
-        for cat in self.selector.iter_select('.//yh:stats/yh:stat', self.ns):
-            stat_id = cat.select_one('./yh:stat_id', self.ns).text
-            self.stat_categories[stat_id] = {
-                'name': cat.select_one('./yh:display_name', self.ns).text,
-                'detail': cat.select_one('./yh:name', self.ns).text,
-                'position_type': cat.select_one('./yh:position_types/yh:position_type', self.ns).text,
+
+        # Parse the results of the stats
+        stats = resp.json()['fantasy_content']['game'][1]['stat_categories']['stats']
+        for stat in stats:
+            stat = stat['stat']
+
+            # If a stat is for specific positions, parse that data.
+            if 'position_types' in stat:
+                position_types  = [
+                    pos_type['position_type'] for pos_type in stat['position_types']
+                ]
+            else:
+                position_types = []
+
+            # TODO Save the rest of the data from this.
+            self.stat_categories[stat['stat_id']] = {
+                'name': stat['display_name'],
+                'detail': stat['name'],
+                'position_type': position_types,
             }
-        return True
 
     def get_games_info(self, available_only=False):
         """
@@ -79,17 +89,16 @@ class YQuery:
             games.append(game_detail)
         return games
 
-    def get_user_leagues(self):
+    def get_user_leagues(self, active_only=False):
         """
         Get the leagues a user has played in.
         :returns: list - Dictionary of league name/id pairs, None if fail
         """
-        save_format = self.yhandler.format
-        self.yhandler.format = self.query_format
         resp = self.yhandler.api_req(str.format('users;use_login=1/games;game_key={0}/leagues', self.game_key))
-        self.yhandler.format = save_format
-        if (resp.status_code != requests.codes['ok']):
-            return None
+
+        print(resp.json())
+
+
         sel = self.selector.parse(resp.content)
         result = []
         for league in sel.iter_select('.//yh:league', self.ns):

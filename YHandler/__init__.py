@@ -1,9 +1,5 @@
-from YHandler import YHandler
-from YQuery import YQuery
-from Extensions import get_player_id
-from Selectors import DefaultSelector, LxmlSelector 
+from __future__ import absolute_import
 
-__all__ = [
-	'YHandler', 'YQuery', 'get_player_id',
-	'DefaultSelector', 'LxmlSelector'
-]
+from YHandler.YHandler import YHandler
+from YHandler.YQuery import YahooSport as YQuery
+from YHandler.Extensions import get_player_id

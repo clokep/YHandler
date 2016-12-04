@@ -1,9 +1,13 @@
-import requests
+from __future__ import absolute_import
+
+from os.path import splitext
 from urlparse import parse_qs, urljoin
 import webbrowser
-from os.path import splitext
-from OAuth1Lite import OAuth1Lite
-from AuthManager import CSVAuthManager, JsonAuthManager
+
+import requests
+
+from YHandler.OAuth1Lite import OAuth1Lite
+from YHandler.AuthManager import CSVAuthManager, JsonAuthManager
 
 GET_TOKEN_URL = 'https://api.login.yahoo.com/oauth/v2/get_token'
 AUTHORIZATION_URL = 'https://api.login.yahoo.com/oauth/v2/request_auth'
@@ -11,8 +15,15 @@ REQUEST_TOKEN_URL = 'https://api.login.yahoo.com/oauth/v2/get_request_token'
 CALLBACK_URL = 'oob'
 
 
+class YahooApiException(Exception):
+    pass
+
+
 class YHandler:
-    def __init__(self, authf='auth.json', format='xml'):
+    _base_url = 'http://fantasysports.yahooapis.com/fantasy/v2/'
+    _format = 'json'
+
+    def __init__(self, authf='auth.json'):
         ext = splitext(authf)[-1].lower()
         if ext == '.csv':
             self.authc = CSVAuthManager(authf)
@@ -21,7 +32,6 @@ class YHandler:
         else:
             self.authc = CSVAuthManager(authf)
         self.authd = self.authc.get_authvals()
-        self.format = format
 
     def reg_user(self):
         """
@@ -89,7 +99,7 @@ class YHandler:
             self.authc.write_authvals(self.authd)
         return response
 
-    def call_api(self, url, req_meth='GET', data={}, headers={}):
+    def _call_api(self, url, req_meth, data, headers):
         """
         Makes an the request to the yahoo api using oauth credentials
         :param: url - request url
@@ -98,11 +108,14 @@ class YHandler:
         :param: headers - additional headers to send with the request
         :returns Response object
         """
-        oauth_api = OAuth1Lite(self.authd['consumer_key'], self.authd['consumer_secret'],
-                               self.authd['oauth_access_token'], self.authd['oauth_access_token_secret'])
+        oauth_api = OAuth1Lite(self.authd['consumer_key'],
+                               self.authd['consumer_secret'],
+                               self.authd['oauth_access_token'],
+                               self.authd['oauth_access_token_secret'])
         return requests.request(method=req_meth, url=url,
                                 data=data, headers=headers,
-                                auth=oauth_api, params={'format': self.format})
+                                auth=oauth_api,
+                                params={'format': self._format})
 
     def api_req(self, querystring, req_meth='GET', data={}, headers={}):
         """
@@ -114,13 +127,22 @@ class YHandler:
         :param: headers - additional headers to send with the request
         :returns Response object
         """
-        base_url = 'http://fantasysports.yahooapis.com/fantasy/v2/'
-        url = urljoin(base_url, querystring)
-        if ('oauth_access_token' not in self.authd) or ('oauth_access_token_secret' not in self.authd) or (
-        not (self.authd['oauth_access_token'] and self.authd['oauth_access_token_secret'])):
+        # Enforce authentication has happened.
+        if ('oauth_access_token' not in self.authd) or ('oauth_access_token_secret' not in self.authd) or (not (self.authd['oauth_access_token'] and self.authd['oauth_access_token_secret'])):
             self.reg_user()
-        query = self.call_api(url, req_meth, data=data, headers=headers)
-        if query.status_code != requests.codes['ok']:  # We have both authtokens but are being rejected. Assume token expired. This could be a LOT more robust
+
+        url = urljoin(self._base_url, querystring)
+        response = self._call_api(url, req_meth, data=data, headers=headers)
+
+        # Both authtokens exist, but the request was rejected. Assume the token
+        # expired, request a new one and try again.
+        # TODO This could be a LOT more robust.
+        if response.status_code != requests.codes['ok']:
             self.refresh_token()
-            query = self.call_api(url, req_meth, data=data, headers=headers)
-        return query
+            response = self._call_api(url, req_meth, data=data, headers=headers)
+
+        # If the response code is still not OK, then nothing we can do.
+        if response.status_code != requests.codes['ok']:
+            raise YahooeApiException(resp)
+
+        return response

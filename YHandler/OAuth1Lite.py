@@ -1,9 +1,15 @@
+from __future__ import absolute_import
+
 from urllib import quote
 from urlparse import parse_qs, urlparse, urlunparse
-from oauthlib.oauth1.rfc5849.signature import normalize_base_string_uri, normalize_parameters, \
-                                              construct_base_string, sign_hmac_sha1
-from oauthlib.oauth1.rfc5849.parameters import prepare_headers
+
 from oauthlib.common import generate_nonce, generate_timestamp
+from oauthlib.oauth1.rfc5849.signature import (construct_base_string,
+                                               normalize_base_string_uri,
+                                               normalize_parameters,
+                                               sign_hmac_sha1)
+from oauthlib.oauth1.rfc5849.parameters import prepare_headers
+
 from requests.auth import AuthBase
 
 
