@@ -11,6 +11,9 @@ from YHandler.Selectors.DefaultSelector import DefaultSelector
 import YHandler
 
 
+class YahooLeague:
+    pass
+
 
 class YahooSport:
     """
@@ -41,10 +44,10 @@ class YahooSport:
         the mapping will be held under the stat_categories data attribute.
         :returns: bool - true if the mapping is succesful, false otherwise
         """
-        resp = self.yhandler.api_req(str.format('game/{0}/stat_categories', self.game_key))
+        data = self.yhandler.api_req(str.format('game/{0}/stat_categories', self.game_key))
 
         # Parse the results of the stats
-        stats = resp.json()['fantasy_content']['game'][1]['stat_categories']['stats']
+        stats = data['game'][1]['stat_categories']['stats']
         for stat in stats:
             stat = stat['stat']
 
@@ -89,27 +92,52 @@ class YahooSport:
             games.append(game_detail)
         return games
 
+    def _unwrap_array(self, data):
+        """
+        Unwrap the arrays that are wrapped into an object that the Yahoo Fantasy
+        API returns. The data will look something like:
+
+        .. code-block:: json
+
+            data = {
+                'count': 2,
+                '0': { ... },
+                '1': { ... },
+            }
+
+        """
+        return [data[str(i)] for i in range(data['count'])]
+
     def get_user_leagues(self, active_only=False):
         """
         Get the leagues a user has played in.
         :returns: list - Dictionary of league name/id pairs, None if fail
         """
-        resp = self.yhandler.api_req(str.format('users;use_login=1/games;game_key={0}/leagues', self.game_key))
+        data = self.yhandler.api_req(str.format('users;use_login=1/games;game_key={0}/leagues', self.game_key))
 
-        print(resp.json())
+        leagues = []
 
+        # This has multiple layers to parse through, generally: users, games,
+        # leagues.
+        for user in self._unwrap_array(data['users']):
+            for game in self._unwrap_array(user['user'][1]['games']):
+                for league in self._unwrap_array(game['game'][1]['leagues']):
+                    league = league['league'][0]
 
-        sel = self.selector.parse(resp.content)
-        result = []
-        for league in sel.iter_select('.//yh:league', self.ns):
-            result.append({
-                'id': league.select_one('./yh:league_id', self.ns).text,
-                'name': league.select_one('./yh:name', self.ns).text,
-                'season': league.select_one('./yh:season', self.ns).text,
-                'week': league.select_one('./yh:current_week', self.ns).text,
-                'is_finished': (lambda val: True if val else False)(league.select_one('./yh:is_finished', self.ns).text)
-             })
-        return result
+                    # If the league is done, potentially skip it.
+                    is_finished = 'is_finished' in league and bool(league['is_finished'])
+                    if active_only and is_finished:
+                        continue
+
+                    leagues.append({
+                        'id': league['league_id'],
+                        'name': league['name'],
+                        'season': league['season'],
+                        'week': league['current_week'],
+                        'is_finished': is_finished,
+                    })
+
+        return leagues
 
     def query_player(self, player_id, resource):
         """

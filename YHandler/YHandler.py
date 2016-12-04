@@ -145,4 +145,6 @@ class YHandler:
         if response.status_code != requests.codes['ok']:
             raise YahooeApiException(resp)
 
-        return response
+        # The response is in JSON, but always encapsulated at a top-level
+        # 'fantasy_content' element.
+        return response.json()['fantasy_content']
