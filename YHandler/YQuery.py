@@ -11,14 +11,30 @@ from YHandler.Selectors.DefaultSelector import DefaultSelector
 import YHandler
 
 
-class YahooLeague:
-    pass
+class BaseYahooResource(object):
+    def __init__(self, **kwargs):
+        # Copy all the parameters into this class.
+        self.__dict__.update(kwargs)
 
 
-class YahooSport:
+class YahooLeagueResource(BaseYahooResource):
     """
-    Represents a particular sport and fantasy game game key (e.g. NFL - season
-    long).
+    Represents a particular league under the Yahoo Fantasy Sports API.
+
+    """
+    def __init__(self, ygame, **kwargs):
+        self.ygame = ygame
+
+        # Copy a couple of parameters.
+        kwargs['id'] = kwargs['league_id']
+        kwargs['is_finished'] = bool(kwargs.get('is_finished', False))
+
+        super(YahooLeagueResource, self).__init__(**kwargs)
+
+
+class YahooGameResource(object):
+    """
+    Represents a particular sport and fantasy game (e.g. NFL - season long).
 
     All queries occur for the current user underneath a game context, and not a
     specific player or team game.
@@ -122,20 +138,13 @@ class YahooSport:
         for user in self._unwrap_array(data['users']):
             for game in self._unwrap_array(user['user'][1]['games']):
                 for league in self._unwrap_array(game['game'][1]['leagues']):
-                    league = league['league'][0]
+                    league = YahooLeagueResource(self, **league['league'][0])
 
                     # If the league is done, potentially skip it.
-                    is_finished = 'is_finished' in league and bool(league['is_finished'])
-                    if active_only and is_finished:
+                    if active_only and league.is_finished:
                         continue
 
-                    leagues.append({
-                        'id': league['league_id'],
-                        'name': league['name'],
-                        'season': league['season'],
-                        'week': league['current_week'],
-                        'is_finished': is_finished,
-                    })
+                    leagues.append(league)
 
         return leagues
 
