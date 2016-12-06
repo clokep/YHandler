@@ -8,6 +8,7 @@ import requests
 
 from YHandler.OAuth1Lite import OAuth1Lite
 from YHandler.AuthManager import CSVAuthManager, JsonAuthManager
+from YHandler.resources import YahooGameResource
 
 GET_TOKEN_URL = 'https://api.login.yahoo.com/oauth/v2/get_token'
 AUTHORIZATION_URL = 'https://api.login.yahoo.com/oauth/v2/request_auth'
@@ -143,8 +144,21 @@ class YHandler:
 
         # If the response code is still not OK, then nothing we can do.
         if response.status_code != requests.codes['ok']:
-            raise YahooeApiException(resp)
+            # Try to get a good error message.
+            try:
+                message = response.json()['error']['description']
+            except (ValueError, KeyError):
+                message = response.content
+
+            raise YahooApiException(
+                '{0}: {1}'.format(response.status_code, message))
 
         # The response is in JSON, but always encapsulated at a top-level
         # 'fantasy_content' element.
         return response.json()['fantasy_content']
+
+    def get_game(self, game_key):
+        data = self.api_req('game/' + game_key)
+        game = data['game'][0]
+
+        return YahooGameResource(game, parent=self)

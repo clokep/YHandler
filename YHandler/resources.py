@@ -7,14 +7,24 @@ import pkgutil
 import json
 from urllib import quote_plus
 
-from YHandler.Selectors.DefaultSelector import DefaultSelector
-import YHandler
-
 
 class BaseYahooResource(object):
-    def __init__(self, api_dict, yhandler=None):
+    def __init__(self, api_dict, parent=None):
         self._api_dict = api_dict
-        self._yhandler = yhandler
+        self._parent = parent
+
+    @property
+    def _api(self):
+        """Recurse via parents until you find a YHandler instance."""
+        # Avoid a recursive import.
+        from YHandler.YHandler import YHandler
+
+        # TODO Better error handling.
+        parent = self._parent
+        while True:
+            if isinstance(parent, YHandler):
+                return parent
+            parent = parent._parent
 
     def __getattr__(self, attribute):
         """Proxy access to stored attributes."""
@@ -22,19 +32,65 @@ class BaseYahooResource(object):
             raise AttributeError(attribute)
         return self._api_dict[attribute]
 
+    def _unwrap_array(self, data):
+        """
+        Unwrap the arrays that are wrapped into an object that the Yahoo Fantasy
+        API returns. The data will look something like:
+
+        .. code-block:: json
+
+            data = {
+                'count': 2,
+                '0': { ... },
+                '1': { ... },
+            }
+
+        """
+        return [data[str(i)] for i in range(data['count'])]
+
 
 class YahooLeagueResource(BaseYahooResource):
     """
     Represents a particular league under the Yahoo Fantasy Sports API.
 
     """
+    @property
+    def id(self):
+        return self._api_dict['league_id']
+
+    @property
+    def key(self):
+        """
+        The league key for the Yahoo Fantasy Sports API.
+
+        .. note::
+
+            The separator between the ``game_key`` and ``league_id`` is a
+            lowercase ``L`` (not the number ``1``).
+
+        See https://developer.yahoo.com/fantasysports/guide/#league-key-format
+        """
+        return self._parent.game_key + '.l.' + self.league_id
 
     @property
     def is_finished(self):
         return bool(self._api_dict.get('is_finished', False))
 
+    def api_req(self, sub_resouce, *args, **kwargs):
+        """Request a sub-resource of a league."""
+        return self._api.api_req(
+            'league/{0}/{1}'.format(self.key, sub_resouce), *args, **kwargs)
 
-class YahooGameResource(object):
+    def scoreboard(self):
+        """The current matchups for all teams in the league."""
+        data = self.api_req('scoreboard')
+
+        matchups = []
+        league = data['league'][1]['scoreboard']
+        return self._unwrap_array(league['matchups'])
+
+
+class YahooGameResource(BaseYahooResource):
     """
     Represents a particular sport and fantasy game (e.g. NFL - season long).
 
@@ -42,7 +98,7 @@ class YahooGameResource(object):
     specific player or team game.
 
     """
-    def __init__(self, yhandler, game_key):
+    def __init__(self, *args, **kwargs):
         """
         Constructor creates a YQuery object with a particular fantasy game context, and maps that
         games stats into the stat_categories dictionary
@@ -50,9 +106,9 @@ class YahooGameResource(object):
         :param: game_key - Yahoo fantasy API game key - these signify fantasy games, not sport games
         :param: [optional, BaseSelector] selector - selector to use for the querying the xml
         """
-        self.yhandler = yhandler
-        self.game_key = game_key
+        super(YahooGameResource, self).__init__(*args, **kwargs)
 
+        # Get additional metadata.
         self.stat_categories = {}
         self._map_stat_categories()
 
@@ -62,9 +118,10 @@ class YahooGameResource(object):
         the mapping will be held under the stat_categories data attribute.
         :returns: bool - true if the mapping is succesful, false otherwise
         """
-        data = self.yhandler.api_req(str.format('game/{0}/stat_categories', self.game_key))
+        data = self._api.api_req(
+            'game/{0}/stat_categories'.format(self.game_key))
 
-        # Parse the results of the stats
+        # Parse the results of the stats call.
         stats = data['game'][1]['stat_categories']['stats']
         for stat in stats:
             stat = stat['stat']
@@ -92,9 +149,9 @@ class YahooGameResource(object):
         :returns: selector of games xml for the current user
         """
         if available_only:
-            resp = self.yhandler.api_req('games;is_available=1')
+            resp = self._parent.api_req('games;is_available=1')
         else:
-            resp = self.yhandler.api_req('games')
+            resp = self._parent.api_req('games')
         if resp.status_code != requests.codes['ok']:
             return None
 
@@ -110,28 +167,13 @@ class YahooGameResource(object):
             games.append(game_detail)
         return games
 
-    def _unwrap_array(self, data):
+    def get_leagues(self, active_only=False):
         """
-        Unwrap the arrays that are wrapped into an object that the Yahoo Fantasy
-        API returns. The data will look something like:
-
-        .. code-block:: json
-
-            data = {
-                'count': 2,
-                '0': { ... },
-                '1': { ... },
-            }
-
-        """
-        return [data[str(i)] for i in range(data['count'])]
-
-    def get_user_leagues(self, active_only=False):
-        """
-        Get the leagues a user has played in.
+        Get all leagues a user has ever played in.
         :returns: list - Dictionary of league name/id pairs, None if fail
         """
-        data = self.yhandler.api_req(str.format('users;use_login=1/games;game_key={0}/leagues', self.game_key))
+        data = self._parent.api_req(
+            'users;use_login=1/games;game_key={0}/leagues'.format(self.game_key))
 
         leagues = []
 
