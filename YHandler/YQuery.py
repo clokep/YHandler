@@ -12,9 +12,15 @@ import YHandler
 
 
 class BaseYahooResource(object):
-    def __init__(self, **kwargs):
-        # Copy all the parameters into this class.
-        self.__dict__.update(kwargs)
+    def __init__(self, api_dict, yhandler=None):
+        self._api_dict = api_dict
+        self._yhandler = yhandler
+
+    def __getattr__(self, attribute):
+        """Proxy access to stored attributes."""
+        if attribute not in self._api_dict:
+            raise AttributeError(attribute)
+        return self._api_dict[attribute]
 
 
 class YahooLeagueResource(BaseYahooResource):
@@ -22,14 +28,10 @@ class YahooLeagueResource(BaseYahooResource):
     Represents a particular league under the Yahoo Fantasy Sports API.
 
     """
-    def __init__(self, ygame, **kwargs):
-        self.ygame = ygame
 
-        # Copy a couple of parameters.
-        kwargs['id'] = kwargs['league_id']
-        kwargs['is_finished'] = bool(kwargs.get('is_finished', False))
-
-        super(YahooLeagueResource, self).__init__(**kwargs)
+    @property
+    def is_finished(self):
+        return bool(self._api_dict.get('is_finished', False))
 
 
 class YahooGameResource(object):
@@ -138,7 +140,7 @@ class YahooGameResource(object):
         for user in self._unwrap_array(data['users']):
             for game in self._unwrap_array(user['user'][1]['games']):
                 for league in self._unwrap_array(game['game'][1]['leagues']):
-                    league = YahooLeagueResource(self, **league['league'][0])
+                    league = YahooLeagueResource(league['league'][0], self)
 
                     # If the league is done, potentially skip it.
                     if active_only and league.is_finished:
