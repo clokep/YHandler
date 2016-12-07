@@ -21,7 +21,7 @@ class YahooApiException(Exception):
 
 
 class YHandler:
-    _base_url = 'http://fantasysports.yahooapis.com/fantasy/v2/'
+    _base_url = 'https://fantasysports.yahooapis.com/fantasy/v2/'
     _format = 'json'
 
     def __init__(self, authf='auth.json'):
