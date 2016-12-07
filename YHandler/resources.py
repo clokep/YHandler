@@ -48,6 +48,66 @@ class BaseYahooResource(object):
         """
         return [data[str(i)] for i in range(data['count'])]
 
+    def _unwrap_dict(self, data):
+        """
+        Unwrap the dict that is given in array that the Yahoo Fantasy API
+        returns. The data will look something like:
+
+        .. code-block:: json
+
+            data = [
+                {'key1': ...},
+                {'key2': ...},
+                []
+            ]
+
+        """
+        result = {}
+        for item in data:
+            if item == []:
+                continue
+
+            for key, value in item.iteritems():
+                # TODO Ensure we're not overwriting key.
+                result[key] = value
+
+        return result
+
+
+class YahooManagerResource(BaseYahooResource):
+    @property
+    def is_current_login(self):
+        """Whether this manager is associated with the current API key in use."""
+        return bool(self._api_dict.get('is_current_login', False))
+
+
+class YahooPlayerResource(BaseYahooResource):
+    pass
+
+
+class YahooTeamResource(BaseYahooResource):
+    def __init__(self, api_dict, *args, **kwargs):
+        # Convert the manager dict into YahooManagerResource objects.
+        api_dict['managers'] = [
+            YahooManagerResource(m['manager']) for m in api_dict['managers']]
+
+        super(YahooTeamResource, self).__init__(api_dict, *args, **kwargs)
+
+    def api_req(self, sub_resouce, *args, **kwargs):
+        """Request a sub-resource of a league."""
+        return self._api.api_req(
+            'team/{0}/{1}'.format(self.team_key, sub_resouce), *args, **kwargs)
+
+    @property
+    def is_current_login(self):
+        """Whether this team is associated with the current API key in use."""
+        return any([m.is_current_login for m in self.managers])
+
+    def get_roster(self, week='current'):
+        # TODO week is a number from X to Y or the key 'current'.
+        data = self.api_request('roster;week=' + week)
+        print(data)
+
 
 class YahooLeagueResource(BaseYahooResource):
     """
@@ -56,21 +116,11 @@ class YahooLeagueResource(BaseYahooResource):
     """
     @property
     def id(self):
-        return self._api_dict['league_id']
+        return self.league_id
 
     @property
     def key(self):
-        """
-        The league key for the Yahoo Fantasy Sports API.
-
-        .. note::
-
-            The separator between the ``game_key`` and ``league_id`` is a
-            lowercase ``L`` (not the number ``1``).
-
-        See https://developer.yahoo.com/fantasysports/guide/#league-key-format
-        """
-        return self._parent.game_key + '.l.' + self.league_id
+        return self.league_key
 
     @property
     def is_finished(self):
@@ -79,7 +129,7 @@ class YahooLeagueResource(BaseYahooResource):
     def api_req(self, sub_resouce, *args, **kwargs):
         """Request a sub-resource of a league."""
         return self._api.api_req(
-            'league/{0}/{1}'.format(self.key, sub_resouce), *args, **kwargs)
+            'league/{0}/{1}'.format(self.league_key, sub_resouce), *args, **kwargs)
 
     def scoreboard(self):
         """The current matchups for all teams in the league."""
@@ -88,6 +138,25 @@ class YahooLeagueResource(BaseYahooResource):
         matchups = []
         league = data['league'][1]['scoreboard']
         return self._unwrap_array(league['matchups'])
+
+    def get_players(self):
+        data = self.api_req('players')
+
+        players = []
+        for player in self._unwrap_array(data['league'][1]['players']):
+            player = self._unwrap_dict(player['player'][0])
+            players.append(player)
+
+        return players
+
+    def get_team(self):
+        data = self.api_req('teams')
+
+        teams = []
+        for team in self._unwrap_array(data['league'][1]['teams']):
+            team = self._unwrap_dict(team['team'][0])
+            teams.append(YahooTeamResource(team))
+        return teams
 
 
 class YahooGameResource(BaseYahooResource):
@@ -141,38 +210,12 @@ class YahooGameResource(BaseYahooResource):
                 'position_type': position_types,
             }
 
-    def get_games_info(self, available_only=False):
-        """
-        Get game information from Yahoo. This is only the fantasy games
-        a particular user is involved in. Not the games of their league.
-        :param: available_only - only returns available games for the user
-        :returns: selector of games xml for the current user
-        """
-        if available_only:
-            resp = self._parent.api_req('games;is_available=1')
-        else:
-            resp = self._parent.api_req('games')
-        if resp.status_code != requests.codes['ok']:
-            return None
-
-        games = []
-        for game in self.selector.iter_select('.//yh:game', self.ns):
-            game_detail = {
-                'key': game.select_one('./yh:game_key', self.ns).text,
-                'code': game.select_one('./yh:code', self.ns).text,
-                'name': game.select_one('./yh:name', self.ns).text,
-                'season': game.select_one('./yh:season', self.ns).text,
-                'type': game.select_one('./yh:season', self.ns).text
-            }
-            games.append(game_detail)
-        return games
-
     def get_leagues(self, active_only=False):
         """
         Get all leagues a user has ever played in.
         :returns: list - Dictionary of league name/id pairs, None if fail
         """
-        data = self._parent.api_req(
+        data = self._api.api_req(
             'users;use_login=1/games;game_key={0}/leagues'.format(self.game_key))
 
         leagues = []

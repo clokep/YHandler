@@ -162,3 +162,27 @@ class YHandler:
         game = data['game'][0]
 
         return YahooGameResource(game, parent=self)
+
+    def get_games(self, available_only=False):
+        """
+        Get game information from Yahoo. This is only the fantasy games
+        a particular user is involved in. Not the games of their league.
+        :param: available_only - only returns available games for the user
+        :returns: selector of games xml for the current user
+        """
+        query = 'games'
+        if available_only:
+            query = 'games;is_available=1'
+        resp = self._api.api_req(query)
+
+        games = []
+        for game in self.selector.iter_select('.//yh:game', self.ns):
+            game_detail = {
+                'key': game.select_one('./yh:game_key', self.ns).text,
+                'code': game.select_one('./yh:code', self.ns).text,
+                'name': game.select_one('./yh:name', self.ns).text,
+                'season': game.select_one('./yh:season', self.ns).text,
+                'type': game.select_one('./yh:season', self.ns).text
+            }
+            games.append(game_detail)
+        return games
