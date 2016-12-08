@@ -82,7 +82,43 @@ class YahooManagerResource(BaseYahooResource):
 
 
 class YahooPlayerResource(BaseYahooResource):
-    pass
+    def __init__(self, api_dict, *args, **kwargs):
+        # Convert the internal data.
+        _api_dict = {}
+        for item in api_dict:
+            if isinstance(item, list):
+                _api_dict.update(self._unwrap_dict(api_dict[0]))
+            elif isinstance(item, dict):
+                _api_dict.update(item)
+
+        super(YahooPlayerResource, self).__init__(_api_dict, *args, **kwargs)
+
+    def api_req(self, sub_resouce, *args, **kwargs):
+        """Request a sub-resource of a team."""
+        return self._api.api_req(
+            'player/{0}/{1}'.format(self.player_key, sub_resouce), *args, **kwargs)
+
+    def get_stats(self, week=None):
+        resource = 'stats'
+        if week:
+            resource += ';week=' + week
+        data = self.api_req(resource)
+
+        # No need to make a resource here, but clean-up the data.
+        stats = data['player'][1]['player_stats']
+        result = stats['0']
+        result['stats'] = [s['stat'] for s in stats['stats']]
+
+        return result
+
+
+class YahooRosterResource(BaseYahooResource):
+    def __init__(self, api_dict, *args, **kwargs):
+        # Convert the players to player resources.
+        api_dict['players'] = [
+            YahooPlayerResource(p['player'], self) for p in self._unwrap_array(api_dict.pop('0')['players'])]
+
+        super(YahooRosterResource, self).__init__(api_dict, *args, **kwargs)
 
 
 class YahooTeamResource(BaseYahooResource):
@@ -94,7 +130,7 @@ class YahooTeamResource(BaseYahooResource):
         super(YahooTeamResource, self).__init__(api_dict, *args, **kwargs)
 
     def api_req(self, sub_resouce, *args, **kwargs):
-        """Request a sub-resource of a league."""
+        """Request a sub-resource of a team."""
         return self._api.api_req(
             'team/{0}/{1}'.format(self.team_key, sub_resouce), *args, **kwargs)
 
@@ -105,8 +141,8 @@ class YahooTeamResource(BaseYahooResource):
 
     def get_roster(self, week='current'):
         # TODO week is a number from X to Y or the key 'current'.
-        data = self.api_request('roster;week=' + week)
-        print(data)
+        data = self.api_req('roster;week=' + week)
+        return YahooRosterResource(data['team'][1]['roster'], self)
 
 
 class YahooLeagueResource(BaseYahooResource):
@@ -149,14 +185,22 @@ class YahooLeagueResource(BaseYahooResource):
 
         return players
 
-    def get_team(self):
+    def get_teams(self):
         data = self.api_req('teams')
 
         teams = []
         for team in self._unwrap_array(data['league'][1]['teams']):
             team = self._unwrap_dict(team['team'][0])
-            teams.append(YahooTeamResource(team))
+            teams.append(YahooTeamResource(team, self))
         return teams
+
+    def get_team(self):
+        """Get the team associated with the current API key."""
+        for team in self.get_teams():
+            if team.is_current_login:
+                return team
+
+        # TODO Raise exception.
 
 
 class YahooGameResource(BaseYahooResource):
