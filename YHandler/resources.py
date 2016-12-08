@@ -17,12 +17,12 @@ class BaseYahooResource(object):
     def _api(self):
         """Recurse via parents until you find a YHandler instance."""
         # Avoid a recursive import.
-        from YHandler.YHandler import YHandler
+        from YHandler.base import YahooFantasySports
 
         # TODO Better error handling.
         parent = self._parent
         while True:
-            if isinstance(parent, YHandler):
+            if isinstance(parent, YahooFantasySports):
                 return parent
             parent = parent._parent
 

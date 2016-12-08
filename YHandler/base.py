@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 from os.path import splitext
 from urlparse import parse_qs, urljoin
 import webbrowser
@@ -20,7 +18,7 @@ class YahooApiException(Exception):
     pass
 
 
-class YHandler:
+class YahooFantasySports:
     _base_url = 'https://fantasysports.yahooapis.com/fantasy/v2/'
     _format = 'json'
 
