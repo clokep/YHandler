@@ -178,12 +178,21 @@ class YahooLeagueResource(BaseYahooResource):
     def get_players(self):
         data = self.api_req('players')
 
-        players = []
-        for player in self._unwrap_array(data['league'][1]['players']):
-            player = self._unwrap_dict(player['player'][0])
-            players.append(player)
+        players = data['league'][1]['players']
+        return [
+            YahooPlayerResource(p['player'], self) for p in self._unwrap_array(players)]
 
-        return players
+    def find_player(self, name):
+        """
+        Search for a player by name.
+
+        Returns a list of YahooPlayerResource of results.
+        """
+        data = self.api_req('players;search={0}'.format(quote_plus(name)))
+
+        players = data['league'][1]['players']
+        return [
+            YahooPlayerResource(p['player'], self) for p in self._unwrap_array(players)]
 
     def get_teams(self):
         data = self.api_req('teams')
@@ -278,80 +287,3 @@ class YahooGameResource(BaseYahooResource):
                     leagues.append(league)
 
         return leagues
-
-    def query_player(self, player_id, resource):
-        """
-        Query a player resource for a particular fantasy game.
-        :param: player_id - Yahoo player id
-        :param: resource - Yahoo player resource to query
-        :returns: selector around response content, None if fail
-        """
-        save_format = self.yhandler.format
-        self.yhandler.format = self.query_format
-        resp = self.yhandler.api_req(str.format('player/{0}.p.{1}/{2}',
-                                                self.game_key, player_id, resource))
-        self.yhandler.format = save_format
-        if resp.status_code != requests.codes['ok']:
-            return None
-        return self.selector.parse(resp.content)
-
-    def get_player_stats(self, player_stats):
-        """
-        Get dictionary of player stats
-        :param: player_stats - selector around stats xml response
-        :returns: stats as a dictionary
-        """
-        stats = {}
-        for stat in player_stats.iter_select('.//yh:player_stats/yh:stats/yh:stat', self.ns):
-            stat_id = stat.select_one('./yh:stat_id', self.ns).text
-            stat_detail = self.stat_categories[stat_id].copy()
-            stat_detail.pop('position_type', None)
-            stat_detail['value'] = stat.select_one('./yh:value', self.ns).text
-            stat_map = {stat_id: stat_detail}
-            stats.update(stat_map)
-        return stats
-
-    def get_player_season_stats(self, player_id):
-        resp = self.query_player(player_id, "stats")
-        if not resp:
-            return None
-        return self.get_player_stats(resp)
-
-    def get_player_week_stats(self, player_id, week):
-        resp = self.query_player(player_id, "stats;type=week;week=" + week)
-        if not resp:
-            return None
-        return self.get_player_stats(resp)
-
-    def find_player(self, league_id, player_name):
-        save_format = self.yhandler.format
-        self.yhandler.format = self.query_format
-        resp = self.yhandler.api_req(str.format('leagues;league_keys={0}.l.{1}/players;search={2}',
-                                     self.game_key, league_id, quote_plus(player_name)))
-        self.yhandler.format = save_format
-        if not resp:
-            return None
-        sel = self.selector.parse(resp.content)
-        players = []
-        for player in sel.iter_select('.//yh:players/yh:player', self.ns):
-            player_detail = {}
-            player_detail['id'] = player.select_one('./yh:player_id', self.ns).text
-            player_detail['name'] = player.select_one('./yh:name/yh:full', self.ns).text
-            player_detail['team'] = player.select_one('./yh:editorial_team_full_name', self.ns).text
-            players.append(player_detail)
-        return players
-
-    def query_league(self, league_id, resource):
-        """
-        Query a league resource for a particular fantasy game.
-        :param: league_id - Yahoo league id
-        :param: resource - Yahoo league resource to query
-        :returns: selector of response content, None if fail
-        """
-        save_format = self.yhandler.format
-        self.yhandler.format = self.query_format
-        resp = self.yhandler.api_req(str.format('league/{0}.l.{1}/{2}', self.game_key, league_id, resource))
-        self.yhandler.format = save_format
-        if resp.status_code != requests.codes['ok']:
-            return None
-        return self.selector.parse(resp.content)
