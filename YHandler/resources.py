@@ -186,7 +186,14 @@ class YahooLeagueResource(BaseYahooResource):
         """
         Search for a player by name.
 
-        Returns a list of YahooPlayerResource of results.
+        Parameters:
+            ``name`` (:class:`str`):
+                The name (full or partial) to search for a player.
+
+        Returns:
+            :class:`list` of :class:`~YHandler.resources.YahooPlayerResource`:
+                The players who match the given name.
+
         """
         data = self.api_req('players;search={0}'.format(quote_plus(name)))
 
@@ -195,6 +202,11 @@ class YahooLeagueResource(BaseYahooResource):
             YahooPlayerResource(p['player'], self) for p in self._unwrap_array(players)]
 
     def get_teams(self):
+        """
+        Returns:
+            :class:`list` of :class:`~YHandler.resources.YahooTeamResource`
+
+        """
         data = self.api_req('teams')
 
         teams = []
@@ -266,7 +278,17 @@ class YahooGameResource(BaseYahooResource):
     def get_leagues(self, active_only=False):
         """
         Get all leagues a user has ever played in.
-        :returns: list - Dictionary of league name/id pairs, None if fail
+
+        Parameters:
+            ``active_only`` (:class:`bool`):
+                If set to :const:`False` (the default), all leagues the user has
+                ever participated in will be returned. Setting this to
+                :const:`True` will reduce this to only current leagues.
+
+        Returns:
+            :class:`list` of :class:`~YHandler.resources.YahooLeagueResource`:
+                Leagues that the current user belongs to.
+
         """
         data = self._api.api_req(
             'users;use_login=1/games;game_key={0}/leagues'.format(self.game_key))
