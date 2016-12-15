@@ -8,23 +8,10 @@ import json
 from urllib import quote_plus
 
 
-class BaseYahooResource(object):
-    def __init__(self, api_dict, parent=None):
+class YahooApiData(object):
+    """Provides the results of an API request as properties on an object."""
+    def __init__(self, api_dict):
         self._api_dict = api_dict
-        self._parent = parent
-
-    @property
-    def _api(self):
-        """Recurse via parents until you find a YHandler instance."""
-        # Avoid a recursive import.
-        from YHandler.base import YahooFantasySports
-
-        # TODO Better error handling.
-        parent = self._parent
-        while True:
-            if isinstance(parent, YahooFantasySports):
-                return parent
-            parent = parent._parent
 
     def __getattr__(self, attribute):
         """Proxy access to stored attributes."""
@@ -108,6 +95,30 @@ class BaseYahooResource(object):
                 result[key] = value
 
         return result
+
+
+class BaseYahooResource(YahooApiData):
+    """
+    A "Resource" on the Yahoo Fantasy Sports API. This has data associated with
+    it and represents a queryable endpoint.
+
+    """
+    def __init__(self, api_dict, parent):
+        super(BaseYahooResource, self).__init__(api_dict)
+        self._parent = parent
+
+    @property
+    def _api(self):
+        """Recurse via parents until you find a YHandler instance."""
+        # Avoid a recursive import.
+        from YHandler.base import YahooFantasySports
+
+        # TODO Better error handling.
+        parent = self._parent
+        while True:
+            if isinstance(parent, YahooFantasySports):
+                return parent
+            parent = parent._parent
 
 
 class YahooManagerResource(BaseYahooResource):
@@ -286,6 +297,36 @@ class YahooLeagueResource(BaseYahooResource):
         # TODO Raise exception.
 
 
+class YahooGameStat(YahooApiData):
+    """Note that this isn't really a resource, you can't query anything else on it."""
+    def __init__(self, api_dict):
+        # Turn position_types into a list.
+        if 'position_types' in api_dict:
+            api_dict['position_types'] = self._flatten_array(
+                        api_dict['position_types'], 'position_type')
+        else:
+            api_dict['position_types'] = []
+
+        # Turn base_stats into a list of stat IDs.
+        if 'base_stats' in api_dict:
+            api_dict['base_stats'] = [int(id) for id in self._flatten_array(
+                self._flatten_array(
+                    api_dict['base_stats'], 'base_stat'), 'stat_id')]
+        else:
+            api_dict['base_stats'] = []
+
+        super(YahooGameStat, self).__init__(api_dict)
+
+    @property
+    def is_composite_stat(self):
+        return bool(self._api_dict.get('is_composite_stat', False))
+
+    @property
+    def sort_order(self):
+        """:const:`True` if a larger value in this is better. :const:`False` if a smaller value is better."""
+        return bool(self._api_dict['sort_order'])
+
+
 class YahooGameResource(BaseYahooResource):
     """
     Represents a particular sport and fantasy game (e.g. NFL - season long).
@@ -320,22 +361,8 @@ class YahooGameResource(BaseYahooResource):
         # Parse the results of the stats call.
         stats = data['game'][1]['stat_categories']['stats']
         for stat in stats:
-            stat = stat['stat']
-
-            # If a stat is for specific positions, parse that data.
-            if 'position_types' in stat:
-                position_types  = [
-                    pos_type['position_type'] for pos_type in stat['position_types']
-                ]
-            else:
-                position_types = []
-
-            # TODO Save the rest of the data from this.
-            self.stat_categories[stat['stat_id']] = {
-                'name': stat['display_name'],
-                'detail': stat['name'],
-                'position_type': position_types,
-            }
+            stat = YahooGameStat(stat['stat'])
+            self.stat_categories[stat.stat_id] = stat
 
     def get_leagues(self, active_only=False):
         """
