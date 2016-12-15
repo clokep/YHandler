@@ -39,14 +39,40 @@ class BaseYahooResource(object):
 
         .. code-block:: json
 
-            data = {
+            {
                 'count': 2,
-                '0': { ... },
-                '1': { ... },
+                '0': { obj1 },
+                '1': { obj2 },
             }
+
+        This would return simply:
+
+        .. code-block:: json
+
+            [obj1, obj2]
 
         """
         return [data[str(i)] for i in range(data['count'])]
+
+    def _flatten_array(self, data, key):
+        """
+        Flatten an array that has keys that are all identical, e.g.:
+
+        .. code-block:: json
+
+            [
+                {'position': 'C'},
+                {'position': 'LW'},
+            ]
+
+        This would return simply:
+
+        .. code-block:: json
+
+            ['C', 'LW']
+
+        """
+        return [item[key] for item in data]
 
     def _unwrap_dict(self, data):
         """
@@ -55,15 +81,25 @@ class BaseYahooResource(object):
 
         .. code-block:: json
 
-            data = [
-                {'key1': ...},
-                {'key2': ...},
+            [
+                {'key1': obj1},
+                {'key2': obj2},
                 []
             ]
+
+        This would return simply:
+
+        .. code-block:: json
+
+            {
+                'key1': obj1,
+                'key2': obj2,
+            }
 
         """
         result = {}
         for item in data:
+            # Some data ends with an empty list, just ignore it.
             if item == []:
                 continue
 
@@ -82,6 +118,15 @@ class YahooManagerResource(BaseYahooResource):
 
 
 class YahooPlayerResource(BaseYahooResource):
+    """
+    A Yahoo Fantasy Sports player.
+
+    **elgible_positions**
+
+    **headshot**
+
+    """
+
     def __init__(self, api_dict, *args, **kwargs):
         # Convert the internal data.
         _api_dict = {}
@@ -90,6 +135,12 @@ class YahooPlayerResource(BaseYahooResource):
                 _api_dict.update(self._unwrap_dict(api_dict[0]))
             elif isinstance(item, dict):
                 _api_dict.update(item)
+
+        # Now that the api_dict isn't as crazy, parse more data.
+        _api_dict['eligible_positions'] = self._flatten_array(
+            _api_dict['eligible_positions'], 'position')
+        _api_dict['selected_position'] = self._unwrap_dict(
+            _api_dict['selected_position'])
 
         super(YahooPlayerResource, self).__init__(_api_dict, *args, **kwargs)
 
@@ -110,6 +161,16 @@ class YahooPlayerResource(BaseYahooResource):
         result['stats'] = [s['stat'] for s in stats['stats']]
 
         return result
+
+    @property
+    def status(self):
+        """A :class:`str` of the players status, possible values are :const:`'IR'`, :const:`'DL'`. :const:`None` if there's no status available."""
+        return self._api_dict.get('status', None)
+
+    @property
+    def is_undroppable(self):
+        """:const:`False` if the player cannot be dropped. :const:`True` if the player can be dropped."""
+        return bool(self._api_dict['is_undroppable'])
 
 
 class YahooRosterResource(BaseYahooResource):
@@ -141,6 +202,7 @@ class YahooTeamResource(BaseYahooResource):
 
     def get_roster(self, week='current'):
         # TODO week is a number from X to Y or the key 'current'.
+        # TODO Accept dates for NHL/MLB/NBA.
         data = self.api_req('roster;week=' + week)
         return YahooRosterResource(data['team'][1]['roster'], self)
 
