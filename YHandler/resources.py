@@ -1,10 +1,5 @@
 from __future__ import absolute_import
 
-from collections import OrderedDict
-import requests
-import re
-import pkgutil
-import json
 from urllib import quote_plus
 
 
