@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 
+from datetime import date, datetime
 from urllib import quote_plus
 
 
@@ -292,8 +293,28 @@ class YahooLeagueResource(BaseYahooResource):
         # TODO Raise exception.
 
 
+class YahooGameWeek(YahooApiData):
+    """
+    **week**
+        The :class:`int` week number for this game.
+    """
+    DATE_FORMAT = '%Y-%m-%d'
+
+    @property
+    def start(self):
+        return datetime.strptime(self._api_dict['start'], self.DATE_FORMAT).date()
+
+    @property
+    def end(self):
+        return datetime.strptime(self._api_dict['end'], self.DATE_FORMAT).date()
+
+    @property
+    def is_current(self):
+        """:const:`True` if this week is the one currently being played, otherwise :const:`False`"""
+        return self.start <= date.today() <= self.end
+
+
 class YahooGameStat(YahooApiData):
-    """Note that this isn't really a resource, you can't query anything else on it."""
     def __init__(self, api_dict):
         # Turn position_types into a list.
         if 'position_types' in api_dict:
@@ -322,6 +343,39 @@ class YahooGameStat(YahooApiData):
         return bool(self._api_dict['sort_order'])
 
 
+class YahooGamePositionType(YahooApiData):
+    """
+    **display_name**
+        The :class:`str` name of this position type, e.g. ``'Goaltenders'``.
+
+    **type**
+        The :class:`str` identifier, e.g. ``'G'``.
+
+    """
+
+
+class YahooGameRosterPosition(YahooApiData):
+    """
+    **abbreviation**
+
+    **position**
+
+    **display_name**
+
+    **position_type**
+
+    """
+    @property
+    def is_bench(self):
+        """:const:`True` if this is the bench position (player will not be used), otherwise :const:`False`."""
+        return bool(self._api_dict.get('is_bench', False))
+
+    @property
+    def is_disabled_list(self):
+        """:const:`True` if this position is for players on the disabled list, otherwise :const:`False`."""
+        return bool(self._api_dict.get('is_disabled_list', False))
+
+
 class YahooGameResource(BaseYahooResource):
     """
     Represents a particular sport and fantasy game (e.g. NFL - season long).
@@ -341,23 +395,52 @@ class YahooGameResource(BaseYahooResource):
         super(YahooGameResource, self).__init__(*args, **kwargs)
 
         # Get additional metadata.
-        self.stat_categories = {}
-        self._map_stat_categories()
+        self.game_weeks = []
+        self._get_game_weeks()
 
-    def _map_stat_categories(self):
+        self.stat_categories = {}
+        self._get_stat_categories()
+
+        self.position_types = {}
+        self._get_position_types()
+
+        self.roster_positions = {}
+        self._get_roster_positions()
+
+    def _get_game_weeks(self):
+        data = self._api.api_req('game/{0}/game_weeks'.format(self.game_key))
+
+        weeks = self._flatten_array(
+            self._unwrap_array(data['game'][1]['game_weeks']), 'game_week')
+        self.game_weeks = [YahooGameWeek(w) for w in weeks]
+
+    def _get_stat_categories(self):
         """
-        Maps a games stat categories to a Python dictionary. If successful,
-        the mapping will be held under the stat_categories data attribute.
-        :returns: bool - true if the mapping is succesful, false otherwise
+        Maps a games stat categories to a Python dictionary. The mapping will be
+        held under the stat_categories data attribute.
+
         """
-        data = self._api.api_req(
-            'game/{0}/stat_categories'.format(self.game_key))
+        data = self._api.api_req('game/{0}/stat_categories'.format(self.game_key))
 
         # Parse the results of the stats call.
         stats = data['game'][1]['stat_categories']['stats']
         for stat in stats:
             stat = YahooGameStat(stat['stat'])
             self.stat_categories[stat.stat_id] = stat
+
+    def _get_position_types(self):
+        data = self._api.api_req('game/{0}/position_types'.format(self.game_key))
+
+        for position_type in data['game'][1]['position_types']:
+            position_type = YahooGamePositionType(position_type['position_type'])
+            self.position_types[position_type.type] = position_type
+
+    def _get_roster_positions(self):
+        data = self._api.api_req('game/{0}/roster_positions'.format(self.game_key))
+
+        for roster_position in data['game'][1]['roster_positions']:
+            roster_position = YahooGameRosterPosition(roster_position['roster_position'])
+            self.roster_positions[roster_position.position] = roster_position
 
     def get_leagues(self, active_only=False):
         """
