@@ -39,6 +39,42 @@ def get_player_id(player_name, sport_code):
 
 
 def get_starting_goalies(date=None):
+    """
+    Get today's starting NHL goalies.
+
+    Returns a :class:`list` of :class:`dict`, each contains the keys:
+
+        ``home_team``
+            The :class:`str` name of the home team.
+        ``home_goalie``
+            A :class:`dict` of the home goalie.
+        ``away_team``
+            The :class:`str` name of the away team.
+        ``away_goalie``
+            A :class:`dict` of the away goalie.
+        ``date``
+            The start of the game as a :class:`datetime`.
+
+        Each goalie is a :class:`dict` with the following keys:
+
+            ``name``
+            ``headshot``
+            ``likelihood``
+                A :class:`dict` with the following keys:
+
+                ``status``
+                    A :class:`str` which is ``Confirmed``, ``Likely``, or
+                    ``Unconfirmed``.
+                ``date`` (optional)
+                    The :class:`datetime` the likelihood was last updated.
+            ``description``
+                ``short``
+                ``long`` (optional)
+                ``author`` (optional)
+                ``author_link`` (optional)
+
+    """
+
     # Get the matchups for a particular date
     if not date:
         date = datetime.date.today()
@@ -77,7 +113,7 @@ def get_starting_goalies(date=None):
     # Handle the hanging matchup at the end.
     matchups.append(current_matchup)
 
-    print(matchups)
+    return matchups
 
 
 def _parse_date(date_str):
@@ -99,6 +135,7 @@ def _parse_date(date_str):
         except ValueError:
             continue
 
+    raise ValueError("Unable to parse date: %s" % date_str)
 
 def _parse_goalie(goalie_element):
     """Parse a home/away goalie element. Returns the expected starting goalie and confidence."""

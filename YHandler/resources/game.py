@@ -83,7 +83,11 @@ class YahooGameRosterPosition(YahooApiData):
 
     @property
     def is_disabled_list(self):
-        """:const:`True` if this position is for players on the disabled list, otherwise :const:`False`."""
+        """
+        :const:`True` if this position is for players on the disabled list, otherwise :const:`False`.
+
+        Note that this returns :const:`False` for IR+ positions.
+        """
         return bool(self._api_dict.get('is_disabled_list', False))
 
 
