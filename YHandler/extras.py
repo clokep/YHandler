@@ -119,10 +119,18 @@ def get_starting_goalies(date=None):
 def _parse_date(date_str):
     """
     Parse the date string to a datetime object, the input is expected to look
-    like: 'Dec. 8, 2016, 1:47 p.m.', 'Dec. 9, 2016 8:30 p.m.', or
-    'Dec. 9, 2016 7 p.m.'.
+    like:
+
+    * ``'Dec. 8, 2016, 1:47 p.m.'``
+    * ``'Dec. 9, 2016 8:30 p.m.'``
+    * ``'Dec. 9, 2016 7 p.m.'``
+    * ``'Jan. 31, 2017, noon'``
+
     """
     date_str = date_str.replace('.m.', 'm')
+
+    # The word 'noon' is sometimes used in dates.
+    date_str = date_str.replace('noon', '12 pm')
 
     # Minutes are only given if they're applicable. Handle this in the pattern.
     minutes = ':%M' if ':' in date_str else ''
